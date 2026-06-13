@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Addition Worksheet Generator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        :root { --sidebar-width: 340px; --bg-color: #f0f2f5; --accent-color: #2c3e50; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; margin: 0; display: flex; height: 100vh; background-color: var(--bg-color); }
+        #sidebar { width: var(--sidebar-width); background: white; padding: 20px; box-shadow: 2px 0 10px rgba(0,0,0,0.1); overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+        h2 { color: var(--accent-color); margin: 0 0 10px 0; font-size: 1.4em; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        .input-group { display: flex; flex-direction: column; gap: 4px; }
+        label { font-weight: 600; font-size: 0.85em; color: #444; }
+        select { padding: 8px; border: 1px solid #ccc; border-radius: 4px; background: #fff; }
+        .range-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .checkbox-group { background: #fdfdfd; padding: 10px; border: 1px solid #eee; border-radius: 4px; }
+        .checkbox-group label { display: flex; align-items: center; gap: 8px; font-weight: normal; cursor: pointer; margin-bottom: 5px; }
+        button { background: #27ae60; color: white; border: none; padding: 14px; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+        #preview-container { flex-grow: 1; display: flex; justify-content: center; align-items: flex-start; padding: 30px; overflow-y: auto; }
+        #worksheet-preview { background: white; width: 8.5in; min-height: 11in; padding: 0.75in; box-shadow: 0 0 25px rgba(0,0,0,0.15); box-sizing: border-box; display: flex; flex-direction: column; }
+        .header-preview { display: flex; justify-content: space-between; margin-bottom: 0.5in; font-family: "Courier New", Courier, monospace; font-size: 1.1em; }
+        #problems-grid { display: grid; grid-template-columns: 1fr 1fr; flex-grow: 1; }
+        .problem { display: flex; align-items: center; justify-content: center; font-family: "Courier New", Courier, monospace; font-size: 1.3em; padding: 10px; }
+        #status-msg { color: #c0392b; font-weight: bold; text-align: center; padding: 20px; border: 2px dashed #c0392b; margin: 20px; display: none; }
+    </style>
+</head>
+<body>
+<div id="sidebar">
+    <h2>Addition Setup</h2>
+    <div class="input-group"><label>Header Style</label><select id="headerStyle"><option value="name-date">Name & Date</option><option value="name-name">Name & Name</option><option value="name-only">Name Only</option><option value="none">No Header</option></select></div>
+    <div class="input-group"><label>Number of Questions</label><select id="numQuestions"></select></div>
+    <div class="input-group"><label>Left Addend (Min - Max)</label><div class="range-row"><select id="minL"></select><select id="maxL"></select></div></div>
+    <div class="input-group"><label>Right Addend (Min - Max)</label><div class="range-row"><select id="minR"></select><select id="maxR"></select></div></div>
+    <div class="input-group"><label>Total Sum (Min - Max)</label><div class="range-row"><select id="minS"></select><select id="maxS"></select></div></div>
+    <div class="input-group"><label>Sum Position</label><select id="sumPos"><option value="right">Right Side (A + B = C)</option><option value="left">Left Side (C = A + B)</option><option value="random">Randomly Toggle</option></select></div>
+    <div class="input-group"><label>Missing Parameter</label><div class="checkbox-group">
+        <label><input type="checkbox" class="missing-check" value="L"> Left Addend</label>
+        <label><input type="checkbox" class="missing-check" value="R"> Right Addend</label>
+        <label><input type="checkbox" class="missing-check" value="S" checked> Sum</label>
+    </div></div>
+    <button onclick="generatePDF()">Download PDF</button>
+</div>
+<div id="preview-container">
+    <div id="status-msg">No possible problems found with current parameters.</div>
+    <div id="worksheet-preview">
+        <div id="header-render" class="header-preview"></div>
+        <div id="problems-grid"></div>
+    </div>
+</div>
+<script>
+    const { jsPDF } = window.jspdf;
+    const BLANK = "_______", LONG_LINE = "_________________________";
+
+    function init() {
+        const ids = ['minL', 'maxL', 'minR', 'maxR', 'minS', 'maxS'];
+        const qCount = document.getElementById('numQuestions');
+        for(let i=10; i<=20; i+=2) qCount.add(new Option(i, i, i===20, i===20));
+        ids.forEach(id => {
+            const el = document.getElementById(id);
+            for(let i=0; i<=999; i++) el.add(new Option(i, i, i===20 && id.startsWith('max'), i===20 && id.startsWith('max')));
+            el.addEventListener('change', () => syncMinMax(id));
+        });
+    }
+
+    function syncMinMax(changedId) {
+        const type = changedId.substring(3);
+        const minEl = document.getElementById('min' + type);
+        const maxEl = document.getElementById('max' + type);
+        if (changedId.startsWith('min')) {
+            if (parseInt(minEl.value) > parseInt(maxEl.value)) maxEl.value = minEl.value;
+        } else {
+            if (parseInt(maxEl.value) < parseInt(minEl.value)) minEl.value = maxEl.value;
+        }
+    }
+
+    function generateProblems() {
+        const config = {
+            count: parseInt(document.getElementById('numQuestions').value),
+            minL: parseInt(document.getElementById('minL').value), maxL: parseInt(document.getElementById('maxL').value),
+            minR: parseInt(document.getElementById('minR').value), maxR: parseInt(document.getElementById('maxR').value),
+            minS: parseInt(document.getElementById('minS').value), maxS: parseInt(document.getElementById('maxS').value),
+            sumPos: document.getElementById('sumPos').value,
+            checks: Array.from(document.querySelectorAll('.missing-check:checked')).map(c => c.value)
+        };
+        if(config.checks.length === 0) return { error: "Please select at least one missing parameter." };
+        
+        let problems = [], safety = 0;
+        while(problems.length < config.count && safety < 10000) {
+            let l = Math.floor(Math.random() * (config.maxL - config.minL + 1)) + config.minL;
+            let r = Math.floor(Math.random() * (config.maxR - config.minR + 1)) + config.minR;
+            let s = l + r;
+            if(s >= config.minS && s <= config.maxS) {
+                let missing = config.checks[Math.floor(Math.random() * config.checks.length)];
+                let pos = config.sumPos === 'random' ? (Math.random() > 0.5 ? 'left' : 'right') : config.sumPos;
+                problems.push({ l, r, s, missing, pos });
+            }
+            safety++;
+        }
+        return problems.length === config.count ? { data: problems } : { error: "No possible problems found with current parameters." };
+    }
+
+    function render() {
+        const result = generateProblems();
+        const headEl = document.getElementById('header-render');
+        const grid = document.getElementById('problems-grid');
+        const status = document.getElementById('status-msg');
+        const preview = document.getElementById('worksheet-preview');
+        
+        grid.innerHTML = ''; headEl.innerHTML = ''; 
+
+        if(result.error) {
+            status.innerText = result.error;
+            status.style.display = 'block';
+            preview.style.display = 'none';
+            return;
+        }
+        
+        status.style.display = 'none';
+        preview.style.display = 'flex';
+        
+        const style = document.getElementById('headerStyle').value;
+        if(style === 'name-date') headEl.innerHTML = `<span>Name: ${LONG_LINE}</span><span>Date: ${LONG_LINE}</span>`;
+        else if(style === 'name-name') headEl.innerHTML = `<span>Name: ${LONG_LINE}</span><span>Name: ${LONG_LINE}</span>`;
+        else if(style === 'name-only') headEl.innerHTML = `<span>Name: ${LONG_LINE}</span>`;
+
+        result.data.forEach(p => {
+            const div = document.createElement('div');
+            div.className = 'problem';
+            let L = p.missing === 'L' ? BLANK : p.l, R = p.missing === 'R' ? BLANK : p.r, S = p.missing === 'S' ? BLANK : p.s;
+            div.innerText = (p.pos === 'right') ? `${L} + ${R} = ${S}` : `${S} = ${L} + ${R}`;
+            grid.appendChild(div);
+        });
+    }
+
+    async function generatePDF() {
+        const result = generateProblems();
+        if(result.error) { alert(result.error); return; }
+        const doc = new jsPDF({ unit: 'in', format: [8.5, 11] });
+        doc.setFont("courier", "normal"); doc.setFontSize(12);
+        const style = document.getElementById('headerStyle').value;
+        if(style !== 'none') {
+            if(style.includes('date')) { doc.text(`Name: ${LONG_LINE}`, 0.75, 0.75); doc.text(`Date: ${LONG_LINE}`, 4.5, 0.75); }
+            else if(style === 'name-name') { doc.text(`Name: ${LONG_LINE}`, 0.75, 0.75); doc.text(`Name: ${LONG_LINE}`, 4.5, 0.75); }
+            else doc.text(`Name: ${LONG_LINE}`, 0.75, 0.75);
+        }
+        const startY = 1.6, spacing = (10.2 - 1.6) / (result.data.length / 2 - 1);
+        doc.setFontSize(18);
+        result.data.forEach((p, i) => {
+            let L = p.missing === 'L' ? BLANK : p.l, R = p.missing === 'R' ? BLANK : p.r, S = p.missing === 'S' ? BLANK : p.s;
+            let txt = (p.pos === 'right') ? `${L} + ${R} = ${S}` : `${S} = ${L} + ${R}`;
+            doc.text(txt, (i % 2 === 0 ? 1.0 : 4.5), startY + (Math.floor(i / 2) * spacing));
+        });
+        doc.save("addition-worksheet.pdf");
+    }
+
+    window.onload = () => { init(); document.querySelectorAll('select, input').forEach(el => el.addEventListener('change', render)); render(); };
+</script>
+</body>
+</html>
