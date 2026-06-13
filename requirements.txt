@@ -1,0 +1,7 @@
+External Library:
+- jsPDF 2.5.1
+
+Languages Used:
+- HTML
+- CSS
+- JavaScript
