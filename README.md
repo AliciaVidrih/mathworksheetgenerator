@@ -3,7 +3,7 @@
 Created by Alicia Vidrih
 
 This project is a fully customizable addition and subtraction worksheet generator.
-It is built using HTML and JavaScript.
+I wrote it in HTML with embedded CSS and JavaScript coding.
 
 Features:
 - Addition worksheet generator
