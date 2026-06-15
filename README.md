@@ -7,6 +7,7 @@ I wrote it in HTML with embedded CSS and JavaScript coding.
 To successfully run it, the index.html, addition.html, and subtraction.html must be stored in the same folder on the web or in your local device.
 
 Features:
+- Math worksheet generator menu
 - Addition worksheet generator
 - Subtraction worksheet generator
 - Customizable header style
